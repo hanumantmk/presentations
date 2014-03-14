@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="en">
+
+	<head>
+		<meta charset="utf-8">
+
+		<title>BCON</title>
+
+		<meta name="description" content="BSON C Object Notation">
+		<meta name="author" content="Jason Carey">
+
+		<meta name="apple-mobile-web-app-capable" content="yes" />
+		<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+		<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
+		<link rel="stylesheet" href="../reveal.js/css/reveal.min.css">
+		<link rel="stylesheet" href="../reveal.js/css/theme/serif.css" id="theme">
+
+		<!-- For syntax highlighting -->
+		<link rel="stylesheet" href="../reveal.js/lib/css/zenburn.css">
+
+		<!-- If the query includes 'print-pdf', include the PDF print sheet -->
+		<script>
+			if( window.location.search.match( /print-pdf/gi ) ) {
+				var link = document.createElement( 'link' );
+				link.rel = 'stylesheet';
+				link.type = 'text/css';
+				link.href = '../reveal.js/css/print/pdf.css';
+				document.getElementsByTagName( 'head' )[0].appendChild( link );
+			}
+		</script>
+
+		<!--[if lt IE 9]>
+		<script src="lib/js/html5shiv.js"></script>
+		<![endif]-->
+	</head>
+
+	<body>
+
+		<div class="reveal">
+
+			<!-- Any section element inside of this container is displayed as a slide -->
+			<div class="slides">
+<section data-markdown>
+#BCON
+###BSON C Object Notation
+</section>
+
+<section data-markdown>
+##What is BCON for?
+
+* creating BSON documents
+* extracting values from BSON documents
+</section>
+
+<section data-markdown>
+##What problem does it solve?
+
+* procedural interfaces are wordy and error prone
+* it's easy to miss the forest for the trees
+</section>
+
+<section data-markdown>
+##What's wrong with the native API?
+
+* Ugly
+* Repetitive
+* Error prone
+</section>
+
+<section>
+    <section>
+        <h2>Creation</h2>
+
+        Create a complex BSON object
+
+        <pre><code data-trim contenteditable>
+{
+    "name" : "Jamie",
+    "address" : {
+        "street" : "500 Main street",
+        "state" : "NY"
+    },
+    "phone" : {
+        "home" : "555-5555",
+        "work" : [ "666-6666", "666-6667" ]
+    },
+    "age" : 35
+}
+        </code></pre>
+    </section>
+
+    <section>
+        <h3>Old way</h3>
+
+        <pre><code data-trim contenteditable>
+bson_t person, child, child2;
+bson_init(&amp;person);
+
+bson_append_utf8(&amp;person, &quot;name&quot;, -1, &quot;Jamie&quot;, -1);
+
+bson_append_document_begin(&amp;person, &quot;address&quot;, -1, &amp;child);
+    bson_append_utf8(&amp;child, &quot;street&quot;, -1, &quot;500 Main street&quot;, -1);
+    bson_append_utf8(&amp;child, &quot;state&quot;, -1, &quot;NY&quot;, -1);
+bson_append_document_end(&amp;person, &amp;child);
+
+bson_append_document_begin(&amp;person, &quot;phone&quot;, -1, &amp;child);
+    bson_append_utf8(&amp;child, &quot;home&quot;, -1, &quot;555-5555&quot;, -1);
+    bson_append_array_begin(&amp;child, &quot;work&quot;, -1, &amp;child2);
+        bson_append_utf8(&amp;child2, &quot;0&quot;, -1, &quot;666-6666&quot;, -1);
+        bson_append_utf8(&amp;child2, &quot;1&quot;, -1, &quot;666-6667&quot;, -1);
+    bson_append_array_end(&amp;child, &amp;child2);
+bson_append_document_end(&amp;person, &amp;child);
+
+bson_append_int32(&amp;person, &quot;age&quot;, -1, 35);
+        </code></pre>
+    </section>
+
+    <section>
+        <h3>BCON</h3>
+
+        <pre><code data-trim contenteditable>
+bson_t person;
+bson_init(&amp;person);
+
+BCON_APPEND(&amp;person,
+    &quot;name&quot;, &quot;Jamie&quot;,
+    &quot;address&quot;, &quot;{&quot;,
+        &quot;street&quot;, &quot;500 Main Street&quot;,
+        &quot;state&quot;, &quot;NY&quot;,
+    &quot;}&quot;,
+    &quot;phone&quot;, &quot;{&quot;,
+        &quot;home&quot;, &quot;555-5555&quot;,
+        &quot;work&quot;, &quot;[&quot;, &quot;666-6666&quot;, &quot;666-6667&quot;, &quot;]&quot;,
+    &quot;}&quot;,
+    &quot;age&quot;, BCON_INT32(35)
+);
+        </code></pre>
+    </section>
+</section>
+
+<section>
+    <section>
+        <h2>Extraction</h2>
+
+        Extract values form a complex BSON object
+
+        <pre><code data-trim contenteditable>
+name: Jamie, age: 35, work_num: 666-6666
+        </code></pre>
+    </section>
+
+    <section>
+        <h3>Old way</h3>
+
+        <pre><code data-trim contenteditable>
+bson_iter_t iter, desc;
+const char * name;
+int32_t age;
+const char * work_num;
+
+if (bson_iter_init_find(&amp;iter, &amp;person, &quot;name&quot;) &amp;&amp;
+    BSON_ITER_HOLDS_UTF8(&amp;iter) &amp;&amp;
+    (name = bson_iter_utf8(&amp;iter, NULL)) &amp;&amp;
+    bson_iter_init_find(&amp;iter, &amp;person, &quot;age&quot;) &amp;&amp;
+    BSON_ITER_HOLDS_INT32(&amp;iter) &amp;&amp;
+    (age = bson_iter_int32(&amp;iter)) &amp;&amp;
+    bson_iter_init(&amp;iter, &amp;person) &amp;&amp;
+    bson_iter_find_descendant(&amp;iter, &quot;phone.work.0&quot;, &amp;desc) &amp;&amp;
+    BSON_ITER_HOLDS_UTF8(&amp;desc) &amp;&amp;
+    (work_num = bson_iter_utf8(&amp;desc, NULL))) {
+
+   printf(&quot;name: %s, age: %d, work_num: %s\n&quot;, name, age, work_num);
+}
+        </code></pre>
+    </section>
+
+    <section>
+        <h3>BCON</h3>
+
+        <pre><code data-trim contenteditable>
+const char * name;
+int32_t age;
+const char * work_num;
+
+if (BCON_EXTRACT(&amp;person,
+    &quot;name&quot;, BCONE_UTF8(name),
+    &quot;age&quot;, BCONE_INT32(age),
+    &quot;phone&quot;, &quot;{&quot;,
+        &quot;work&quot;, &quot;[&quot;, BCONE_UTF8(work_num), &quot;]&quot;,
+    &quot;}&quot;
+)) {
+   printf(&quot;name: %s, age: %d, work_num: %s\n&quot;, name, age, work_num);
+}
+        </code></pre>
+    </section>
+</section>
+
+<section>
+    <section data-markdown>
+# How does it work?
+    </section>
+
+    <section data-markdown>
+## Variadic Functions
+
+> A function of indefinite arity, i.e., one which accepts a variable number of arguments.
+    </section>
+
+    <section>
+        <h3>bson_append iterates over args</h3>
+        <pre><code data-trim contenteditable>
+void
+bcon_append (bson_t *bson,
+             ...)
+{
+   va_list ap;
+   bcon_append_ctx_t ctx;
+
+   bcon_append_ctx_init (&amp;ctx);
+
+   va_start (ap, bson);
+
+   bcon_append_ctx_va (bson, &amp;ctx, &amp;ap);
+
+   va_end (ap);
+}
+       </code></pre>
+    </section>
+
+    <section>
+        <h3>Macros carefully expand</h3>
+        <pre><code data-trim contenteditable>
+BCON_APPEND (bson,
+    &quot;foo&quot;, BCON_INT32(10)
+);
+        </code></pre>
+        <h3>into...</h3>
+        <pre><code data-trim contenteditable>
+bcon_append (bson,
+    &quot;foo&quot;, BCON_MAGIC, BCON_TYPE_INT32, bcon_ensure_int32(10),
+NULL);
+        </code></pre>
+    </section>
+
+    <section data-markdown>
+## Some transformations
+
+* BCON_APPEND
+    * Adds a null sentinel
+
+* BCON_INT32
+    * BCON_MAGIC
+        * A special global string who's address is known
+    * BCON_TYPE_INT32
+        * A bson type
+    * bcon_ensure_int32
+        * An inline function chich coerces and validates it's argument into an int32_t
+    </section>
+
+    <section data-markdown>
+## Runtime interpreter
+
+* tokenizes input, searching for
+    * strings
+    * BCON_MAGIC, $type, $val_1, $val_2, ...
+* tokens are fed to a state machine
+    * stack of bson handles for sub-documents
+    * wrapper around primitive libbson api
+    </section>
+</section>
+
+<section>
+    <section data-markdown>
+## Pros
+
+* Easy to read
+* Harder to fat finger
+* Embeddable
+    * runs of appends or extracts can be pulled from arbitrary va_list's
+    </section>
+
+    <section data-markdown>
+## Cons
+
+* Performance overhead (~25%)
+* Some edge cases are hard to debug
+    * Unexpected tokens will smash the stack
+    </section>
+</section>
+
+<section>
+    <h2>How do I get it?</h2>
+
+    It comes with libbson!
+
+    <pre><code data-trim contenteditable>
+#include &lt;bson.h&gt;
+
+/* just include bcon.h in addition to bson.h */
+#include &lt;bcon.h&gt;
+    </code></pre>
+</section>
+
+<section data-markdown>
+# Questions?
+</section>
+			</div>
+
+		</div>
+
+		<script src="../reveal.js/lib/js/head.min.js"></script>
+		<script src="../reveal.js/js/reveal.min.js"></script>
+
+		<script>
+
+			// Full list of configuration options available here:
+			// https://github.com/hakimel/reveal.js#configuration
+			Reveal.initialize({
+				controls: true,
+				progress: true,
+				history: true,
+				center: true,
+
+				theme: Reveal.getQueryHash().theme, // available themes are in /css/theme
+				transition: Reveal.getQueryHash().transition || 'default', // default/cube/page/concave/zoom/linear/fade/none
+
+				// Parallax scrolling
+				// parallaxBackgroundImage: 'https://s3.amazonaws.com/hakim-static/reveal-js/reveal-parallax-1.jpg',
+				// parallaxBackgroundSize: '2100px 900px',
+
+				// Optional libraries used to extend on reveal.js
+				dependencies: [
+					{ src: '../reveal.js/lib/js/classList.js', condition: function() { return !document.body.classList; } },
+					{ src: '../reveal.js/plugin/markdown/marked.js', condition: function() { return !!document.querySelector( '[data-markdown]' ); } },
+					{ src: '../reveal.js/plugin/markdown/markdown.js', condition: function() { return !!document.querySelector( '[data-markdown]' ); } },
+					{ src: '../reveal.js/plugin/highlight/highlight.js', async: true, callback: function() { hljs.initHighlightingOnLoad(); } },
+					{ src: '../reveal.js/plugin/zoom-js/zoom.js', async: true, condition: function() { return !!document.body.classList; } },
+					{ src: '../reveal.js/plugin/notes/notes.js', async: true, condition: function() { return !!document.body.classList; } }
+				]
+			});
+
+		</script>
+
+	</body>
+</html>
